@@ -4,7 +4,7 @@ import pandas as pd
 import importlib  # <-- Librería mágica de Python para importaciones dinámicas
 from utils import limpiar_entero, limpiar_texto, transformar_fecha
 from database import insertar_registros_masivos
-
+from utils import bloqueo_pantalla_carga
 # IMPORTACIÓN DINÁMICA DEL DICCIONARIO DE REPORTES
 from reportes import DICCIONARIO_REPORTES
 
@@ -25,90 +25,141 @@ st.sidebar.info("💡 Desarrollado para el análisis estratégico de cobertura d
 # =========================================================================
 # SECCIÓN 1: CARGA DE ARCHIVO
 # =========================================================================
+# app.py (Sección de Carga de Archivo unificada y protegida por FK)
 if opcion_menu == "📥 Carga de Archivo Excel":
-    st.title("📥 Cargador de Reportes de Posiciones")
-    st.markdown("Arrastra el archivo maestro de Recursos Humanos para sincronizar de forma masiva la base de datos MySQL.")
-
-    archivo_cargado = st.file_uploader("Selecciona el archivo Excel (.xlsx)", type=["xlsx"])
-
-    if archivo_cargado is not None:
+    st.title("📥 Cargador de Reportes de Posiciones e Insumos")
+    st.markdown("Sube el archivo maestro en formato `.xlsx`. El sistema procesará automáticamente las pestañas **'Rep Posiciones'** y **'Justificación'** en orden jerárquico.")
+    
+    archivo_subido = st.file_uploader("Selecciona el archivo Excel corporativo:", type=["xlsx"])
+    
+    if archivo_subido is not None:
         try:
-            excel_file = pd.ExcelFile(archivo_cargado)
+            excel_file = pd.ExcelFile(archivo_subido)
             pestanas = excel_file.sheet_names
             
-            # Intenta preseleccionar la pestaña 'Rep Posiciones' por defecto
-            indice_defecto = pestanas.index("Rep Posiciones") if "Rep Posiciones" in pestanas else 0
+            st.info(f"📁 Archivo detectado correctamente. Pestañas encontradas: {', '.join(pestanas)}")
             
-            col1, _ = st.columns([2, 2])
-            with col1:
-                pestana_seleccionada = st.selectbox("Selecciona la pestaña a importar:", pestanas, index=indice_defecto)
-            
-            df = pd.read_excel(archivo_cargado, sheet_name=pestana_seleccionada, dtype=str)
-            
-            st.subheader(f"👀 Vista previa de los datos ('{pestana_seleccionada}')")
-            st.dataframe(df.head(5), use_container_width=True)
-            
-            if st.button("🚀 Procesar e Insertar en Base de Datos", type="primary"):
-                with st.spinner("Limpiando e inyectando registros masivos en MySQL..."):
-                    registros_a_insertar = []
-                    
-                    for _, fila in df.iterrows():
-                        posicion = limpiar_entero(fila.get('Posición'))
-                        if not posicion:
-                            continue  # Ignora filas vacías o sin número de posición válido
+            if st.button("🚀 Procesar y Sincronizar Base de Datos", type="primary"):
+                from utils import bloqueo_pantalla_carga
+                from database import insertar_registros_masivos, insertar_justificaciones_masivas
+                
+                exito_pos = False
+                msg_pos = "No se encontró la pestaña 'Rep Posiciones'."
+                set_posiciones_validas = set()  # Para guardar los IDs de posiciones válidas insertadas
+                
+                # =============================================================
+                # PASO 1: INSERTAR PRIMERO EL MAESTRO DE POSICIONES (PADRE)
+                # =============================================================
+                if "Rep Posiciones" in pestanas:
+                    with bloqueo_pantalla_carga("Procesando y limpiando Maestro de Posiciones..."):
+                        df_pos = pd.read_excel(archivo_subido, sheet_name="Rep Posiciones")
                         
-                        registro = (
-                            posicion,
-                            limpiar_texto(fila.get('Descripción posición')),
-                            limpiar_entero(fila.get('Unidad')),
-                            limpiar_texto(fila.get('Descripción unidad')),
-                            limpiar_entero(fila.get('Centro costos')),
-                            limpiar_texto(fila.get('Descripción centro de costos')),
-                            limpiar_texto(fila.get('Nivel')),
-                            limpiar_entero(fila.get('Subnivel')),
-                            limpiar_entero(fila.get('División')),
-                            limpiar_texto(fila.get('Descripción división')),
-                            limpiar_texto(fila.get('Subdivisión')),
-                            limpiar_texto(fila.get('Descripción subdivisión')),
-                            limpiar_entero(fila.get('Grupo')),
-                            limpiar_texto(fila.get('Descripción grupo')),
-                            limpiar_texto(fila.get('Área')),
-                            limpiar_texto(fila.get('Descripción área')),
-                            limpiar_entero(fila.get('Función')),
-                            limpiar_texto(fila.get('Descripción función')),
-                            limpiar_entero(fila.get('Localidad')),
-                            limpiar_texto(fila.get('Descripción localidad')),
-                            limpiar_texto(fila.get('Estado')),
-                            limpiar_entero(fila.get('Empleado')),
-                            limpiar_texto(fila.get('Nombre empleado')),
-                            transformar_fecha(fila.get('Ocupado ultima vez')),
-                            limpiar_entero(fila.get('Días sin ocupar')),
-                            limpiar_entero(fila.get('Pos. Supervisor')),
-                            limpiar_entero(fila.get('Supervisor')),
-                            limpiar_texto(fila.get('JEFE RH')),
-                            transformar_fecha(fila.get('VIGENCIA')),
-                            limpiar_texto(fila.get('ESTATUS')),
-                            limpiar_entero(fila.get('DIAS VENCIDAS')),
-                            limpiar_texto(fila.get('RAZÓN')),
-                            limpiar_texto(fila.get('Tipo de Just')),
-                            limpiar_texto(fila.get('Clasific')),
-                            limpiar_texto(fila.get('Complejo')),
-                            limpiar_texto(fila.get('Gerente'))
-                        )
-                        registros_a_insertar.append(registro)
-                    
-                    if registros_a_insertar:
-                        exito, mensaje = insertar_registros_masivos(registros_a_insertar)
-                        if exito:
-                            st.success(f"🎉 {mensaje}")
-                            st.balloons()
-                        else:
-                            st.error(f"❌ Ocurrió un error: {mensaje}")
+                        registros_pos = []
+                        for _, fila in df_pos.iterrows():
+                            id_pos = limpiar_entero(fila.get('Posición'))
+                            if id_pos:
+                                set_posiciones_validas.add(id_pos)
+                                
+                            registros_pos.append((
+                                id_pos,
+                                limpiar_texto(fila.get('Descripción posición')),
+                                limpiar_entero(fila.get('Unidad')),
+                                limpiar_texto(fila.get('Descripción unidad')),
+                                limpiar_texto(fila.get('Centro costos')),
+                                limpiar_texto(fila.get('Descripción centro de costos')),
+                                limpiar_texto(fila.get('Nivel')),
+                                limpiar_texto(fila.get('Subnivel')),
+                                limpiar_texto(fila.get('División')),
+                                limpiar_texto(fila.get('Descripción división')),
+                                limpiar_texto(fila.get('Subdivisión')),
+                                limpiar_texto(fila.get('Descripción subdivisión')),
+                                limpiar_texto(fila.get('Grupo')),
+                                limpiar_texto(fila.get('Descripción grupo')),
+                                limpiar_texto(fila.get('Área')),
+                                limpiar_texto(fila.get('Descripción área')),
+                                limpiar_texto(fila.get('Función')),
+                                limpiar_texto(fila.get('Descripción función')),
+                                limpiar_texto(fila.get('Localidad')),
+                                limpiar_texto(fila.get('Descripción localidad')),
+                                limpiar_texto(fila.get('Estado')),
+                                limpiar_entero(fila.get('Empleado')),
+                                limpiar_texto(fila.get('Nombre empleado')),
+                                transformar_fecha(fila.get('Ocupado ultima vez')),
+                                limpiar_entero(fila.get('Días sin ocupar')),
+                                limpiar_entero(fila.get('Pos. Supervisor')),
+                                limpiar_texto(fila.get('Supervisor')),
+                                limpiar_texto(fila.get('JEFE RH')),
+                                transformar_fecha(fila.get('VIGENCIA')),
+                                limpiar_texto(fila.get('ESTATUS')),
+                                limpiar_entero(fila.get('DIAS VENCIDAS')),
+                                limpiar_texto(fila.get('RAZÓN')),
+                                limpiar_texto(fila.get('Tipo de Just')),
+                                limpiar_texto(fila.get('Clasific')),
+                                limpiar_texto(fila.get('Complejo')),
+                                limpiar_texto(fila.get('Gerente'))
+                            ))
+                        
+                        if registros_pos:
+                            exito_pos, msg_pos = insertar_registros_masivos(registros_pos)
+                
+                # =============================================================
+                # PASO 2: INSERTAR LAS JUSTIFICACIONES (HIJO) FILTRANDO POR REFERENCIA
+                # =============================================================
+                exito_just = False
+                msg_just = "No se encontró la pestaña 'Justificación'."
+                
+                if "Justificación" in pestanas:
+                    if not exito_pos:
+                        st.error("🛑 Se detuvo la carga de 'Justificación' porque el maestro de posiciones falló o no existe.")
                     else:
-                        st.warning("⚠️ No se encontraron posiciones estructuradas válidas para insertar.")
-                        
+                        with bloqueo_pantalla_carga("Procesando y validando Pestaña de Justificaciones..."):
+                            df_just = pd.read_excel(archivo_subido, sheet_name="Justificación")
+                            
+                            registros_just = []
+                            omitidos = 0
+                            
+                            for _, fila in df_just.iterrows():
+                                id_pos_just = limpiar_entero(fila.get('Posición'))
+                                
+                                # VALIDACIÓN DE INTEGRIDAD REFERENCIAL ANTES DE IR A MYSQL
+                                if id_pos_just not in set_posiciones_validas:
+                                    omitidos += 1
+                                    continue  # Se salta el registro para evitar romper la llave foránea
+                                    
+                                registros_just.append((
+                                    id_pos_just,
+                                    limpiar_texto(fila.get('Area')),
+                                    limpiar_texto(fila.get('Posicion')),
+                                    transformar_fecha(fila.get('Vigencia')),
+                                    limpiar_texto(fila.get('Comentarios')),
+                                    limpiar_texto(fila.get('Tipo')),
+                                    transformar_fecha(fila.get('Fecha de Inicio')),
+                                    limpiar_entero(fila.get('Dias Asignados')),
+                                    limpiar_texto(fila.get('Estatus'))
+                                ))
+                                
+                            if registros_just:
+                                exito_just, msg_just = insertar_justificaciones_masivas(registros_just)
+                                if omitidos > 0:
+                                    msg_just += f" (Se omitieron {omitidos} registros huérfanos que no existían en el maestro)."
+                            else:
+                                msg_just = f"⚠️ No se cargaron justificaciones. Las {omitidos} posiciones procesadas eran huérfanas."
+                
+                # --- RENDER DE RESULTADOS FINALES ---
+                st.markdown("### 📊 Resultado de la Sincronización Integrada:")
+                if exito_pos:
+                    st.success(f"🔹 {msg_pos}")
+                else:
+                    st.error(f"❌ Posiciones: {msg_pos}")
+                    
+                if exito_just:
+                    st.success(f"🔹 {msg_just}")
+                elif "Justificación" in pestanas and exito_pos:
+                    st.warning(f"⚠️ Justificaciones: {msg_just}")
+                    
         except Exception as e:
-            st.error(f"🚨 Error al abrir o procesar el libro de Excel: {e}")
+            st.error(f"🚨 Error crítico en la orquestación del libro Excel: {e}")
+
 
 
 # =========================================================================

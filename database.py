@@ -4,7 +4,6 @@ import mysql.connector
 from mysql.connector import Error
 from dotenv import load_dotenv
 
-# Cargar las variables del archivo .env
 load_dotenv()
 
 def obtener_conexion():
@@ -17,12 +16,21 @@ def obtener_conexion():
     )
 
 def insertar_registros_masivos(registros):
-    """Inserta o actualiza miles de registros de golpe utilizando executemany."""
+    """
+    Vacía la tabla posiciones e inserta los nuevos registros maestros.
+    Desactiva las llaves foráneas temporalmente para permitir el TRUNCATE seguro.
+    """
     conexion = None
     try:
         conexion = obtener_conexion()
         if conexion.is_connected():
+            conexion.autocommit = False
             cursor = conexion.cursor()
+            
+            # Desactivar validación de llaves foráneas para poder hacer TRUNCATE
+            cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+            cursor.execute("TRUNCATE TABLE posiciones;")
+            cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
             
             sql_query = """
                 INSERT INTO posiciones (
@@ -33,24 +41,55 @@ def insertar_registros_masivos(registros):
                     estado, empleado, nombre_empleado, ocupado_ultima_vez, dias_sin_ocupar,
                     pos_supervisor, supervisor, jefe_rh, vigencia, estatus,
                     dias_vencidas, razon, tipo_de_just, clasific, complejo, gerente
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON DUPLICATE KEY UPDATE
-                    descripcion_posicion=VALUES(descripcion_posicion), unidad=VALUES(unidad), 
-                    descripcion_unidad=VALUES(descripcion_unidad), centro_costos=VALUES(centro_costos),
-                    descripcion_centro_costos=VALUES(descripcion_centro_costos), nivel=VALUES(nivel), subnivel=VALUES(subnivel),
-                    estado=VALUES(estado), empleado=VALUES(empleado), nombre_empleado=VALUES(nombre_empleado),
-                    pos_supervisor=VALUES(pos_supervisor), supervisor=VALUES(supervisor), jefe_rh=VALUES(jefe_rh), 
-                    vigencia=VALUES(vigencia), estatus=VALUES(estatus), gerente=VALUES(gerente);
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);
             """
             
             cursor.executemany(sql_query, registros)
             conexion.commit()
-            cant_filas = cursor.rowcount
+            cant_filas = len(registros)
             cursor.close()
-            return True, f"Proceso terminado con éxito. Filas afectadas: {cant_filas}"
+            return True, f"Base de datos sincronizada desde cero. Se importaron {cant_filas} posiciones con éxito."
             
     except Error as e:
-        return False, f"Error de MySQL: {e}"
+        if conexion and conexion.is_connected():
+            conexion.rollback()
+        return False, f"Error en la sincronización de posiciones (Rollback aplicado): {e}"
+    finally:
+        if conexion and conexion.is_connected():
+            conexion.close()
+
+def insertar_justificaciones_masivas(registros):
+    """
+    Vacía la tabla justificaciones e inserta los nuevos registros.
+    """
+    conexion = None
+    try:
+        conexion = obtener_conexion()
+        if conexion.is_connected():
+            conexion.autocommit = False
+            cursor = conexion.cursor()
+            
+            cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+            cursor.execute("TRUNCATE TABLE justificaciones;")
+            cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+            
+            sql_query = """
+                INSERT INTO justificaciones (
+                    posicion, area_codigo, nombre_posicion, vigencia, comentarios,
+                    tipo_posicion, fecha_inicio, dias_asignados, estatus_justificacion
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s);
+            """
+            
+            cursor.executemany(sql_query, registros)
+            conexion.commit()
+            cant_filas = len(registros)
+            cursor.close()
+            return True, f"Tabla de Justificaciones sincronizada. Se importaron {cant_filas} registros con éxito."
+            
+    except Error as e:
+        if conexion and conexion.is_connected():
+            conexion.rollback()
+        return False, f"Error en la sincronización de Justificaciones (Rollback aplicado): {e}"
     finally:
         if conexion and conexion.is_connected():
             conexion.close()
