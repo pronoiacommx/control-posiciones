@@ -21,7 +21,7 @@ def mostrar_reporte():
                 SUM(CASE WHEN clasific = 'EVENTUAL' AND Estado = 'VACANTE' THEN 1 ELSE 0 END) AS `EVENTUAL VACANTE`,
                 SUM(CASE WHEN clasific = 'EVENTUAL' THEN 1 ELSE 0 END) AS `TOTAL EVENTUAL`,
                 COUNT(*) AS `Total general`
-            FROM z_posiciones
+            FROM posiciones
             WHERE jefe_rh IS NOT NULL AND jefe_rh != ''
             GROUP BY jefe_rh
             ORDER BY `Total general` DESC;

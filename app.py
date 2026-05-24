@@ -1,13 +1,12 @@
 # app.py
 import streamlit as st
 import pandas as pd
+import importlib  # <-- Librería mágica de Python para importaciones dinámicas
 from utils import limpiar_entero, limpiar_texto, transformar_fecha
 from database import insertar_registros_masivos
 
-# IMPORTACIÓN DE REPORTES INDEPENDIENTES
-from reportes import vencimiento_proyecto
-from reportes import cobertura_jefe
-
+# IMPORTACIÓN DINÁMICA DEL DICCIONARIO DE REPORTES
+from reportes import DICCIONARIO_REPORTES
 
 
 # Configuración global de la página
@@ -113,31 +112,39 @@ if opcion_menu == "📥 Carga de Archivo Excel":
 
 
 # =========================================================================
-# SECCIÓN 2: PANEL DE REPORTES DE GERENCIA
+# SECCIÓN 2: PANEL DE REPORTES DE GERENCIA (DINÁMICO)
 # =========================================================================
 elif opcion_menu == "📊 Panel de Reportes (Gerentes)":
     st.title("📈 Centro de Inteligencia & Reportes Directivos")
     st.markdown("Selecciona el análisis ejecutivo que deseas consultar en tiempo real.")
     st.markdown("---")
     
-    # Selector dinámico de reportes independientes
+    # El selectbox ahora se alimenta AUTOMÁTICAMENTE de las llaves de nuestro diccionario
+    opciones_reportes = list(DICCIONARIO_REPORTES.keys())
+    
     reporte_seleccionado = st.selectbox(
         "Reporte Ejecutivo Disponible:",
-        [
-            "1. Vencimiento de Posiciones por Proyecto", 
-            "2. Cobertura de Plantilla por Jefe",
-            "3. Histórico de Semanas Revisadas (Próximamente)"
-        ]
+        opciones_reportes
     )
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Orquestación de llamadas
-    if reporte_seleccionado == "1. Vencimiento de Posiciones por Proyecto":
-        vencimiento_proyecto.mostrar_reporte()
+    # --- MOTOR DE IMPORTACIÓN EN TIEMPO REAL ---
+    if reporte_seleccionado:
+        # 1. Obtener el nombre del archivo asociado al reporte seleccionado
+        nombre_modulo = DICCIONARIO_REPORTES[reporte_seleccionado]
         
-    elif reporte_seleccionado == "2. Cobertura de Plantilla por Jefe":
-        cobertura_jefe.mostrar_reporte()
-        
-    elif reporte_seleccionado == "3. Histórico de Semanas Revisadas (Próximamente)":
-        st.info("📅 **Reporte en construcción.** Módulo listo para desplegar las métricas operativas por semanas.")
+        try:
+            # 2. Cargar el archivo .py de forma dinámica desde la carpeta reportes
+            modulo_reporte = importlib.import_module(f"reportes.{nombre_modulo}")
+            
+            # 3. Ejecutar la función estándar 'mostrar_reporte' de ese archivo
+            if hasattr(modulo_reporte, "mostrar_reporte"):
+                modulo_reporte.mostrar_reporte()
+            else:
+                st.error(f"🚨 Error: El archivo '{nombre_modulo}.py' no tiene definida la función 'mostrar_reporte()'.")
+                
+        except ModuleNotFoundError:
+            st.error(f"❌ No se encontró el archivo físico 'reportes/{nombre_modulo}.py'. Verifica la configuración.")
+        except Exception as e:
+            st.error(f"🚨 Error al intentar renderizar el módulo: {e}")

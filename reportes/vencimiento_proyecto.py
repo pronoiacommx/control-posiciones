@@ -15,7 +15,7 @@ def mostrar_reporte():
                 SUM(CASE WHEN Estado = 'OCUPADA' THEN 1 ELSE 0 END) AS OCUPADA,
                 SUM(CASE WHEN Estado = 'VACANTE' THEN 1 ELSE 0 END) AS VACANTE,
                 COUNT(*) AS `Total general`
-            FROM z_posiciones
+            FROM posiciones
             GROUP BY Complejo
             ORDER BY `Total general` DESC;
         """

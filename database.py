@@ -25,7 +25,7 @@ def insertar_registros_masivos(registros):
             cursor = conexion.cursor()
             
             sql_query = """
-                INSERT INTO z_posiciones (
+                INSERT INTO posiciones (
                     posicion, descripcion_posicion, unidad, descripcion_unidad, centro_costos,
                     descripcion_centro_costos, nivel, subnivel, division, descripcion_division,
                     subdivision, descripcion_subdivision, grupo, descripcion_grupo, area,
